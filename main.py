@@ -134,14 +134,13 @@ class ConfiguredAgent(discord.Client):
             current_depth = int(depth_match.group(1))
             if current_depth >= self.max_depth:
                 await message.reply(f"🛑 **System Pause:** Max autonomous conversation depth ({self.max_depth}) reached. "
-                                    f"Project may be incomplete. @Human, please review our progress and mention me to continue.")
+                                    f"Project may be incomplete. @Human, please review our progress and mention me to continue.", mention_author=False)
                 print(f"[{self.name}] Max conversation depth ({self.max_depth}) reached. Stopping loop.")
                 return
 
         # 5. Clean current message
         clean_content = message.content
-        for user in message.mentions:
-            clean_content = clean_content.replace(f"<@{user.id}>", "").replace(f"<@!{user.id}>", "")
+        clean_content = clean_content.replace(f"<@{self.user.id}>", "").replace(f"<@!{self.user.id}>", "")
         clean_content = re.sub(r'\[Depth:\s*\d+\]', '', clean_content).strip()
 
         # 6. Context History Fetching
@@ -159,7 +158,7 @@ class ConfiguredAgent(discord.Client):
         if transcript:
             final_prompt = f"--- Recent Channel History ---\n{transcript}\n--- End History ---\n\nNew Message from {message.author.name}:\n{clean_content}"
 
-        thinking_msg = await message.reply(f"*{self.name} is thinking...*")
+        thinking_msg = await message.reply(f"*{self.name} is thinking...*", mention_author=False)
 
         try:
             response = await self._call_llm(final_prompt)
@@ -171,9 +170,24 @@ class ConfiguredAgent(discord.Client):
             else:
                 final_response = f"**{self.name}:** {response}\n\n*[Depth: {current_depth + 1}]*"
                 
-            await thinking_msg.edit(content=final_response)
+            await thinking_msg.delete()
+            
+            # Split the response if it exceeds Discord's 2000 character limit
+            if len(final_response) > 2000:
+                chunks = [final_response[i:i+1990] for i in range(0, len(final_response), 1990)]
+                for idx, chunk in enumerate(chunks):
+                    if idx == 0:
+                        await message.reply(content=chunk, mention_author=False)
+                    else:
+                        await message.channel.send(content=chunk)
+            else:
+                await message.reply(content=final_response, mention_author=False)
+
         except Exception as e:
-            await thinking_msg.edit(content=f"**{self.name}** encountered an error: {e}")
+            try:
+                await thinking_msg.edit(content=f"**{self.name}** encountered an error: {e}")
+            except discord.NotFound:
+                await message.reply(content=f"**{self.name}** encountered an error: {e}", mention_author=False)
 
     async def _call_llm(self, content: str) -> str:
         if self.provider == "anthropic":
