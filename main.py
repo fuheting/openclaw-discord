@@ -33,9 +33,16 @@ def get_available_models() -> tuple[set[str], set[str]]:
     gemini_key = os.environ.get("GEMINI_API_KEY")
     if gemini_key:
         try:
+            http_options = {}
+            if proxy:
+                import httpx
+                http_options = {
+                    "httpx_client": httpx.Client(proxy=proxy),
+                    "httpx_async_client": httpx.AsyncClient(proxy=proxy)
+                }
             client = genai.Client(
                 api_key=gemini_key,
-                http_options={"proxy": proxy} if proxy else None
+                http_options=http_options if http_options else None
             )
             models = client.models.list()
             gemini_models = {m.name.replace("models/", "") for m in models}
@@ -110,9 +117,16 @@ class ConfiguredAgent(discord.Client):
                 http_client=http_client,
             )
         elif self.provider == "gemini":
+            http_options = {}
+            if proxy:
+                import httpx
+                http_options = {
+                    "httpx_client": httpx.Client(proxy=proxy),
+                    "httpx_async_client": httpx.AsyncClient(proxy=proxy)
+                }
             self.gemini = genai.Client(
                 api_key=os.environ.get("GEMINI_API_KEY"),
-                http_options={"proxy": proxy} if proxy else None
+                http_options=http_options if http_options else None
             )
 
     async def on_ready(self):
@@ -209,9 +223,16 @@ class ConfiguredAgent(discord.Client):
         return response.content[0].text
 
     async def _call_gemini(self, content: str) -> str:
+        http_options = {}
+        if proxy:
+            import httpx
+            http_options = {
+                "httpx_client": httpx.Client(proxy=proxy),
+                "httpx_async_client": httpx.AsyncClient(proxy=proxy)
+            }
         client = genai.Client(
             api_key=os.environ.get("GEMINI_API_KEY"),
-            http_options={"proxy": proxy} if proxy else None
+            http_options=http_options if http_options else None
         )
         response = await client.aio.models.generate_content(
             model=self.model,
