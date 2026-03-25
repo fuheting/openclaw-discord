@@ -35,7 +35,6 @@ def get_available_models() -> tuple[set[str], set[str]]:
         try:
             http_options = {}
             if proxy:
-                import httpx
                 http_options = {
                     "httpx_client": httpx.Client(proxy=proxy),
                     "httpx_async_client": httpx.AsyncClient(proxy=proxy)
@@ -119,7 +118,6 @@ class ConfiguredAgent(discord.Client):
         elif self.provider == "gemini":
             http_options = {}
             if proxy:
-                import httpx
                 http_options = {
                     "httpx_client": httpx.Client(proxy=proxy),
                     "httpx_async_client": httpx.AsyncClient(proxy=proxy)
@@ -225,7 +223,6 @@ class ConfiguredAgent(discord.Client):
     async def _call_gemini(self, content: str) -> str:
         http_options = {}
         if proxy:
-            import httpx
             http_options = {
                 "httpx_client": httpx.Client(proxy=proxy),
                 "httpx_async_client": httpx.AsyncClient(proxy=proxy)
