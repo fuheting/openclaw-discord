@@ -33,7 +33,10 @@ def get_available_models() -> tuple[set[str], set[str]]:
     gemini_key = os.environ.get("GEMINI_API_KEY")
     if gemini_key:
         try:
-            client = genai.Client(api_key=gemini_key)
+            client = genai.Client(
+                api_key=gemini_key,
+                http_options={"proxy": proxy} if proxy else None
+            )
             models = client.models.list()
             gemini_models = {m.name.replace("models/", "") for m in models}
         except Exception as e:
@@ -109,6 +112,7 @@ class ConfiguredAgent(discord.Client):
         elif self.provider == "gemini":
             self.gemini = genai.Client(
                 api_key=os.environ.get("GEMINI_API_KEY"),
+                http_options={"proxy": proxy} if proxy else None
             )
 
     async def on_ready(self):
@@ -207,6 +211,7 @@ class ConfiguredAgent(discord.Client):
     async def _call_gemini(self, content: str) -> str:
         client = genai.Client(
             api_key=os.environ.get("GEMINI_API_KEY"),
+            http_options={"proxy": proxy} if proxy else None
         )
         response = await client.aio.models.generate_content(
             model=self.model,
