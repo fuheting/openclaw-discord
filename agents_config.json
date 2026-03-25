@@ -20,7 +20,7 @@
     "token_env_var": "DISCORD_TOKEN_RES",
     "discord_id": "1485925944018341979",
     "provider": "gemini",
-    "model": "gemini-3.0-flash",
+    "model": "gemini-2.5-flash",
     "system_prompt": "You are the Researcher on this team. You specialize in gathering information, analyzing data, and providing comprehensive research reports. When tasked with research, provide well-structured findings with sources and analysis."
   }
 ]
