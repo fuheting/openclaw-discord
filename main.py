@@ -82,8 +82,10 @@ def validate_and_update_configs(configs: list[dict]) -> list[dict]:
     return configs
 
 
+import re
+
 class ConfiguredAgent(discord.Client):
-    def __init__(self, config: dict):
+    def __init__(self, config: dict, trusted_bot_ids: list[str]):
         intents = discord.Intents.default()
         intents.messages = True
         intents.message_content = True
@@ -94,6 +96,8 @@ class ConfiguredAgent(discord.Client):
         self.provider = config["provider"]
         self.model = config["model"]
         self.system_prompt = config["system_prompt"]
+        self.max_depth = config.get("max_depth", 5)
+        self.trusted_bot_ids = trusted_bot_ids
         self.token = os.getenv(config["token_env_var"])
 
         if self.provider == "anthropic":
@@ -111,20 +115,63 @@ class ConfiguredAgent(discord.Client):
         print(f"{self.name} bot logged in as {self.user}")
 
     async def on_message(self, message: discord.Message):
+        # 1. Prevent self-replies
         if self.user.id == message.author.id:
             return
 
-        mention_str = f"<@{self.discord_id}>"
-        if mention_str not in message.content:
+        # 2. Trusted Bot Whitelist
+        if message.author.bot and str(message.author.id) not in self.trusted_bot_ids:
             return
 
-        content = message.content.replace(mention_str, "").strip()
+        # 3. Robust Mention Parsing
+        if self.user not in message.mentions:
+            return
+
+        # 4. Infinite Loop Prevention (Depth Counter)
+        current_depth = 1
+        depth_match = re.search(r'\[Depth:\s*(\d+)\]', message.content)
+        if depth_match:
+            current_depth = int(depth_match.group(1))
+            if current_depth >= self.max_depth:
+                await message.reply(f"🛑 **System Pause:** Max autonomous conversation depth ({self.max_depth}) reached. "
+                                    f"Project may be incomplete. @Human, please review our progress and mention me to continue.")
+                print(f"[{self.name}] Max conversation depth ({self.max_depth}) reached. Stopping loop.")
+                return
+
+        # 5. Clean current message
+        clean_content = message.content
+        for user in message.mentions:
+            clean_content = clean_content.replace(f"<@{user.id}>", "").replace(f"<@!{user.id}>", "")
+        clean_content = re.sub(r'\[Depth:\s*\d+\]', '', clean_content).strip()
+
+        # 6. Context History Fetching
+        history_msgs = [msg async for msg in message.channel.history(limit=10, before=message)]
+        history_msgs.reverse()  # Chronological order
+        
+        transcript = ""
+        for h_msg in history_msgs:
+            author_name = h_msg.author.name
+            clean_h_content = re.sub(r'\[Depth:\s*\d+\]', '', h_msg.content).strip()
+            transcript += f"[{author_name}]: {clean_h_content}\n"
+
+        # Combine transcript and current message
+        final_prompt = clean_content
+        if transcript:
+            final_prompt = f"--- Recent Channel History ---\n{transcript}\n--- End History ---\n\nNew Message from {message.author.name}:\n{clean_content}"
 
         thinking_msg = await message.reply(f"*{self.name} is thinking...*")
 
         try:
-            response = await self._call_llm(content)
-            await thinking_msg.edit(content=f"**{self.name}:** {response}")
+            response = await self._call_llm(final_prompt)
+            
+            # 7. Human Intervention Check
+            if "[REQUIRES HUMAN]" in response:
+                clean_response = response.replace("[REQUIRES HUMAN]", "").strip()
+                final_response = f"🛑 **{self.name} Needs Clarification:**\n{clean_response}"
+            else:
+                final_response = f"**{self.name}:** {response}\n\n*[Depth: {current_depth + 1}]*"
+                
+            await thinking_msg.edit(content=final_response)
         except Exception as e:
             await thinking_msg.edit(content=f"**{self.name}** encountered an error: {e}")
 
@@ -164,10 +211,12 @@ async def main():
     configs = validate_and_update_configs(configs)
 
     proxy = os.getenv("ALL_PROXY")
+    
+    trusted_bot_ids = [c["discord_id"] for c in configs]
 
     tasks = []
     for config in configs:
-        agent = ConfiguredAgent(config)
+        agent = ConfiguredAgent(config, trusted_bot_ids)
         tasks.append(agent.start(agent.token))
 
     await asyncio.gather(*tasks)
